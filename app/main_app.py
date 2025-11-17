@@ -76,7 +76,7 @@ if "niche" not in st.session_state:
     st.session_state.niche = cfg.default_niche
 
 # -------------------------------------------------------------------------
-# Sidebar · Controls (no theme)
+# Sidebar · Controls (no theme toggle)
 # -------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("#### Niche")
@@ -126,7 +126,7 @@ with st.sidebar:
     st.caption(llm_label)
 
 # -------------------------------------------------------------------------
-# Hero header (new dashboard style)
+# Hero header
 # -------------------------------------------------------------------------
 st.markdown(
     f"""
@@ -158,7 +158,7 @@ st.markdown(
 )
 
 # -------------------------------------------------------------------------
-# Compute KPIs once
+# KPIs / analytics base data
 # -------------------------------------------------------------------------
 lead_rows = lead_store.load_leads()
 n_leads = len(lead_rows)
@@ -170,11 +170,8 @@ support_count = sum(1 for r in analytics.records if r.intent == "support")
 # -------------------------------------------------------------------------
 tab_workspace, tab_ops = st.tabs(["🧠 Co‑Pilot workspace", "📊 Operations dashboard"])
 
-# =====================================================================
-# TAB 1 · CO‑PILOT WORKSPACE  (chat + live KPIs)
-# =====================================================================
+# ====================== TAB 1: WORKSPACE ======================
 with tab_workspace:
-    # KPIs row داخل التاب نفسه
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.markdown(
@@ -291,7 +288,7 @@ with tab_workspace:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ----- Right: live snapshot -----
+    # ----- Right: snapshot -----
     with right_col:
         st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
         st.markdown(
@@ -317,9 +314,7 @@ with tab_workspace:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-# =====================================================================
-# TAB 2 · OPERATIONS DASHBOARD  (knowledge base + leads CRM)
-# =====================================================================
+# ====================== TAB 2: OPERATIONS DASHBOARD ======================
 with tab_ops:
     k_left, k_right = st.columns([1.4, 2.0], gap="large")
 
