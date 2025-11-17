@@ -74,16 +74,13 @@ if "questions_count" not in st.session_state:
     st.session_state.questions_count = 0
 if "niche" not in st.session_state:
     st.session_state.niche = cfg.default_niche
-if "theme" not in st.session_state:
-    st.session_state.theme = cfg.default_theme
 
 # -------------------------------------------------------------------------
-# Sidebar · Controls
+# Sidebar · Controls (no theme)
 # -------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("#### Niche & theme")
+    st.markdown("#### Niche")
     st.session_state.niche = st.selectbox("Business niche", cfg.niches, index=0)
-    st.session_state.theme = st.selectbox("Theme (visual only)", cfg.themes, index=0)
 
     st.markdown("---")
     st.markdown("#### Upload business docs")
@@ -102,7 +99,7 @@ with st.sidebar:
                 f.write(uf.getbuffer())
             uploaded_paths.append(save_path)
 
-    st.caption("Use your pricing, services, and policy documents to power the assistant.")
+    st.caption("Upload pricing, services, and policy docs to power the assistant.")
 
     st.markdown("---")
     if st.button("⚙️ Index uploaded docs", use_container_width=True):
@@ -113,7 +110,9 @@ with st.sidebar:
                 n_chunks = ingestion_engine.ingest_files(uploaded_paths)
                 if n_chunks > 0:
                     vector_store.load()
-                    st.success(f"Indexed {len(uploaded_paths)} file(s) into {n_chunks} chunks.")
+                    st.success(
+                        f"Indexed {len(uploaded_paths)} file(s) into {n_chunks} chunks."
+                    )
                 else:
                     st.warning("No chunks were produced. Check that your docs contain text.")
 
@@ -124,16 +123,16 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("#### LLM backend")
-    st.caption(f"{llm_label}")
+    st.caption(llm_label)
 
 # -------------------------------------------------------------------------
-# Hero header
+# Hero header (new dashboard style)
 # -------------------------------------------------------------------------
 st.markdown(
     f"""
 <div class="hero-shell">
   <div class="hero-kicker">
-    AI SALES & SUPPORT CO‑PILOT · {st.session_state.niche.upper()}
+    AI SALES & SUPPORT · {st.session_state.niche.upper()}
   </div>
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem;">
     <div>
@@ -141,8 +140,7 @@ st.markdown(
         AI Sales & Support Co‑Pilot for {st.session_state.niche}
       </div>
       <p class="hero-subtitle">
-        Convert chats into paying customers while you sleep. Let this assistant answer FAQs,
-        handle support, and capture warm leads automatically.
+        Let this co‑pilot answer FAQs, handle support, and capture warm leads from every chat.
       </p>
     </div>
     <div style="display:flex; flex-direction:column; gap:0.4rem; align-items:flex-end;">
@@ -160,185 +158,207 @@ st.markdown(
 )
 
 # -------------------------------------------------------------------------
-# KPIs row
+# Compute KPIs once
 # -------------------------------------------------------------------------
 lead_rows = lead_store.load_leads()
 n_leads = len(lead_rows)
 sales_count = sum(1 for r in analytics.records if r.intent == "sales")
 support_count = sum(1 for r in analytics.records if r.intent == "support")
 
-k1, k2, k3, k4 = st.columns(4)
-with k1:
-    st.markdown(
-        f"""
-    <div class="metric-card">
-      <div class="metric-label">Files indexed</div>
-      <div class="metric-value">{len(vector_store.chunks)}</div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-with k2:
-    st.markdown(
-        f"""
-    <div class="metric-card">
-      <div class="metric-label">Leads captured</div>
-      <div class="metric-value">{n_leads}</div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-with k3:
-    st.markdown(
-        f"""
-    <div class="metric-card">
-      <div class="metric-label">Sales questions</div>
-      <div class="metric-value">{sales_count}</div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-with k4:
-    st.markdown(
-        f"""
-    <div class="metric-card">
-      <div class="metric-label">Support questions</div>
-      <div class="metric-value">{support_count}</div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-st.markdown("")
-
 # -------------------------------------------------------------------------
-# Main dashboard row: chat (left) + snapshot (right)
+# Main tabs: Workspace + Operations
 # -------------------------------------------------------------------------
-left_col, right_col = st.columns([2.4, 1.6], gap="large")
+tab_workspace, tab_ops = st.tabs(["🧠 Co‑Pilot workspace", "📊 Operations dashboard"])
 
-# ----- Left: chat panel -----
-with left_col:
-    st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="panel-title">Chat co‑pilot</div>'
-        '<div class="panel-caption">Ask anything about pricing, packages, policies, or support.</div>',
-        unsafe_allow_html=True,
-    )
-
-    # previous messages
-    for msg in st.session_state.chat_history:
-        avatar = "🧑" if msg["role"] == "user" else "🤖"
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
-
-    user_message = st.chat_input(
-        "Ask a sales or support question about your business..."
-    )
-
-    if user_message:
-        st.session_state.chat_history.append({"role": "user", "content": user_message})
-        st.session_state.questions_count += 1
-
-        with st.chat_message("user", avatar="🧑"):
-            st.markdown(user_message)
-
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Thinking with your business docs..."):
-                answer, retrieved, retrieved_ids = rag_chain.answer(
-                    user_message, st.session_state.chat_history
-                )
-                final_answer, intent, lead_completed, lead_payload = agent.process_turn(
-                    user_message, answer
-                )
-
-                analytics.add_record(
-                    question=user_message,
-                    answer=final_answer,
-                    intent=intent.value,
-                    retrieved_ids=retrieved_ids,
-                )
-
-                # Store lead if completed
-                if lead_completed and lead_payload is not None:
-                    summary = f"Lead from chat · niche={st.session_state.niche}"
-                    lead_store.append_lead(
-                        source="chat",
-                        name=lead_payload["name"],
-                        email=lead_payload["email"],
-                        phone=lead_payload["phone"],
-                        interest=lead_payload["interest"],
-                        conversation_summary=summary,
-                    )
-                    st.success(
-                        "Lead captured and stored. Check it in the Leads CRM section below."
-                    )
-
-                st.markdown(final_answer)
-
-                # Sources panel
-                if retrieved:
-                    with st.expander("Sources used in this answer"):
-                        for rc in retrieved:
-                            meta = rc.metadata
-                            label = f"{meta.source}"
-                            if meta.page:
-                                label += f", page {meta.page}"
-                            st.markdown(f"- **{label}**  \nScore: {rc.score:.2f}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ----- Right: snapshot panel -----
-with right_col:
-    st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="panel-title">Session snapshot</div>'
-        '<div class="panel-caption">Live overview of this assistant run.</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(f"- **Niche:** {st.session_state.niche}")
-    st.markdown(f"- **LLM backend:** {llm_label}")
-    st.markdown(f"- **Indexed chunks:** {len(vector_store.chunks)}")
-    st.markdown(f"- **Total leads:** {n_leads}")
-
-    st.markdown("---")
-    st.markdown("**Top intents in this session**")
-    intent_counts = analytics.get_intent_counts()
-    if intent_counts:
-        for intent_name, count in intent_counts.items():
-            st.markdown(f"- **{intent_name}**: {count}")
-    else:
-        st.caption("No questions yet. Start chatting to see intent analytics.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("")
-
-# -------------------------------------------------------------------------
-# Bottom: Knowledge base & Leads CRM
-# -------------------------------------------------------------------------
-tab_kb, tab_leads = st.tabs(["📚 Knowledge base", "🧾 Leads CRM"])
-
-with tab_kb:
-    st.subheader("Business knowledge base")
-
-    if vector_store.chunks:
-        st.markdown("**Indexed documents**")
-        docs: Dict[str, int] = {}
-        for c in vector_store.chunks:
-            docs.setdefault(c.source, 0)
-            docs[c.source] += 1
-        for name, count in docs.items():
-            st.markdown(f"- {name} · {count} chunks")
-    else:
-        st.info("No documents indexed yet. Upload and index files from the sidebar.")
-
-with tab_leads:
-    st.subheader("Leads CRM")
-
-    if lead_rows:
-        st.dataframe(lead_rows, hide_index=True, use_container_width=True)
-    else:
-        st.caption(
-            "No leads captured yet. Sales‑intent chats will automatically add leads here."
+# =====================================================================
+# TAB 1 · CO‑PILOT WORKSPACE  (chat + live KPIs)
+# =====================================================================
+with tab_workspace:
+    # KPIs row داخل التاب نفسه
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(
+            f"""
+        <div class="metric-card">
+          <div class="metric-label">Files indexed</div>
+          <div class="metric-value">{len(vector_store.chunks)}</div>
+        </div>
+        """,
+            unsafe_allow_html=True,
         )
+    with k2:
+        st.markdown(
+            f"""
+        <div class="metric-card">
+          <div class="metric-label">Leads captured</div>
+          <div class="metric-value">{n_leads}</div>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+    with k3:
+        st.markdown(
+            f"""
+        <div class="metric-card">
+          <div class="metric-label">Sales questions</div>
+          <div class="metric-value">{sales_count}</div>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+    with k4:
+        st.markdown(
+            f"""
+        <div class="metric-card">
+          <div class="metric-label">Support questions</div>
+          <div class="metric-value">{support_count}</div>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("")
+
+    left_col, right_col = st.columns([2.4, 1.6], gap="large")
+
+    # ----- Left: chat -----
+    with left_col:
+        st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="panel-title">Chat co‑pilot</div>'
+            '<div class="panel-caption">Talk like a real customer. Ask about prices, packages, or issues.</div>',
+            unsafe_allow_html=True,
+        )
+
+        for msg in st.session_state.chat_history:
+            avatar = "🧑" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.markdown(msg["content"])
+
+        user_message = st.chat_input(
+            "Ask a sales or support question about your business..."
+        )
+
+        if user_message:
+            st.session_state.chat_history.append(
+                {"role": "user", "content": user_message}
+            )
+            st.session_state.questions_count += 1
+
+            with st.chat_message("user", avatar="🧑"):
+                st.markdown(user_message)
+
+            with st.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Thinking with your business docs..."):
+                    answer, retrieved, retrieved_ids = rag_chain.answer(
+                        user_message, st.session_state.chat_history
+                    )
+                    final_answer, intent, lead_completed, lead_payload = agent.process_turn(
+                        user_message, answer
+                    )
+
+                    analytics.add_record(
+                        question=user_message,
+                        answer=final_answer,
+                        intent=intent.value,
+                        retrieved_ids=retrieved_ids,
+                    )
+
+                    if lead_completed and lead_payload is not None:
+                        summary = f"Lead from chat · niche={st.session_state.niche}"
+                        lead_store.append_lead(
+                            source="chat",
+                            name=lead_payload["name"],
+                            email=lead_payload["email"],
+                            phone=lead_payload["phone"],
+                            interest=lead_payload["interest"],
+                            conversation_summary=summary,
+                        )
+                        st.success(
+                            "Lead captured and stored. Review it in the Operations dashboard."
+                        )
+
+                    st.markdown(final_answer)
+
+                    if retrieved:
+                        with st.expander("Sources used in this answer"):
+                            for rc in retrieved:
+                                meta = rc.metadata
+                                label = f"{meta.source}"
+                                if meta.page:
+                                    label += f", page {meta.page}"
+                                st.markdown(f"- **{label}**  \nScore: {rc.score:.2f}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ----- Right: live snapshot -----
+    with right_col:
+        st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="panel-title">Live session snapshot</div>'
+            '<div class="panel-caption">High‑level summary of this assistant run.</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(f"- **Niche:** {st.session_state.niche}")
+        st.markdown(f"- **LLM backend:** {llm_label}")
+        st.markdown(f"- **Indexed chunks:** {len(vector_store.chunks)}")
+        st.markdown(f"- **Total leads:** {n_leads}")
+        st.markdown(f"- **Questions this session:** {st.session_state.questions_count}")
+
+        st.markdown("---")
+        st.markdown("**Intent mix**")
+        intent_counts = analytics.get_intent_counts()
+        if intent_counts:
+            for name, count in intent_counts.items():
+                st.markdown(f"- **{name}**: {count}")
+        else:
+            st.caption("No questions yet. Start chatting to see intent analytics.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# =====================================================================
+# TAB 2 · OPERATIONS DASHBOARD  (knowledge base + leads CRM)
+# =====================================================================
+with tab_ops:
+    k_left, k_right = st.columns([1.4, 2.0], gap="large")
+
+    # Knowledge base summary
+    with k_left:
+        st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="panel-title">Knowledge base</div>'
+            '<div class="panel-caption">Docs currently powering the co‑pilot.</div>',
+            unsafe_allow_html=True,
+        )
+
+        if vector_store.chunks:
+            docs: Dict[str, int] = {}
+            for c in vector_store.chunks:
+                docs.setdefault(c.source, 0)
+                docs[c.source] += 1
+            for name, count in docs.items():
+                st.markdown(f"- {name} · {count} chunks")
+        else:
+            st.info("No documents indexed yet. Upload and index files from the sidebar.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Leads CRM table
+    with k_right:
+        st.markdown('<div class="dash-panel">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="panel-title">Leads CRM</div>'
+            '<div class="panel-caption">Every hot lead captured via sales‑intent chats.</div>',
+            unsafe_allow_html=True,
+        )
+
+        if lead_rows:
+            st.dataframe(lead_rows, hide_index=True, use_container_width=True)
+        else:
+            st.caption(
+                "No leads captured yet. When chats look sales‑focused, the co‑pilot will "
+                "ask for contact details and add leads here automatically."
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
