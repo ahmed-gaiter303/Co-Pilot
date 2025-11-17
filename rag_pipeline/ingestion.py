@@ -8,8 +8,6 @@ from typing import List, Dict, Any
 
 import faiss
 import numpy as np
-from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
 
 from app.config import RAGConfig, PathsConfig
 
@@ -28,18 +26,49 @@ class ChunkMetadata:
 class IngestionEngine:
     """
     Handles document loading, chunking, embedding, and vector index creation.
+
+    - Tries to use SentenceTransformer for embeddings.
+    - If that fails (e.g. Torch NotImplementedError on Streamlit Cloud),
+      it falls back to a lightweight local embedding (byte-based) so the
+      app keeps working without GPU or fancy Torch build.
     """
 
     def __init__(self, paths: PathsConfig, rag_cfg: RAGConfig):
         self.paths = paths
         self.cfg = rag_cfg
-        self.model = SentenceTransformer(self.cfg.embedding_model_name)
+
+        self.st_model = None
+        self.embedding_dim = 768  # fallback dimension
+
+        # Try to load SentenceTransformer, but don't crash if it fails
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore
+
+            logger.info(
+                "Trying to load SentenceTransformer model '%s'",
+                self.cfg.embedding_model_name,
+            )
+            self.st_model = SentenceTransformer(self.cfg.embedding_model_name)
+            # If we reached here, use its real dimension
+            test_emb = self.st_model.encode(["test"], convert_to_numpy=True)
+            self.embedding_dim = int(test_emb.shape[1])
+            logger.info("SentenceTransformer loaded; embedding dim = %d", self.embedding_dim)
+        except Exception as e:
+            logger.error(
+                "Failed to load SentenceTransformer embedding model; "
+                "falling back to simple local embeddings. Error: %s",
+                e,
+            )
+            self.st_model = None
+
         self.index_path = self.paths.vector_store_dir / "index.faiss"
         self.meta_path = self.paths.vector_store_dir / "chunks.pkl"
 
     # ----- file reading -----
 
     def _read_pdf(self, path: Path) -> List[Dict[str, Any]]:
+        from pypdf import PdfReader  # local import to keep dependencies modular
+
         reader = PdfReader(str(path))
         results = []
         for i, page in enumerate(reader.pages):
@@ -80,6 +109,27 @@ class IngestionEngine:
                 idx += 1
             start = end - overlap
         return chunks
+
+    # ----- embeddings -----
+
+    def _embed_texts(self, texts: List[str]) -> np.ndarray:
+        """
+        Embed a list of texts using either SentenceTransformer (if available)
+        or a simple byte-based fallback.
+        """
+        if self.st_model is not None:
+            embs = self.st_model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            return embs.astype("float32")
+
+        # Fallback: simple deterministic embedding
+        logger.warning("Using fallback byte-based embeddings (SentenceTransformer unavailable).")
+        vectors = []
+        for t in texts:
+            arr = np.zeros(self.embedding_dim, dtype="float32")
+            for i, ch in enumerate(t.encode("utf-8")[: self.embedding_dim]):
+                arr[i] = ch / 255.0
+            vectors.append(arr)
+        return np.vstack(vectors)
 
     # ----- public API -----
 
@@ -122,10 +172,9 @@ class IngestionEngine:
         # embeddings
         texts = [c.content for c in all_chunks]
         logger.info("Encoding %d chunks into embeddings", len(texts))
-        embs = self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
-        embs = embs.astype("float32")
+        embs = self._embed_texts(texts)
 
-        dim = embs.shape[1]
+        dim = int(embs.shape[1])
         index = faiss.IndexFlatL2(dim)
         index.add(embs)
 
