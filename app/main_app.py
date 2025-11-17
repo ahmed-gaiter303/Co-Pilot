@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-# --- FIX: make project root importable when running from app/main_app.py ---
+# --- FIX: add project root to sys.path when running from app/main_app.py ---
 import sys
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]  # /mount/src/co-pilot
+ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 # ---------------------------------------------------------------------------
 
 import logging
-from pathlib import Path as _Path
 from typing import List, Dict
 
 import streamlit as st
@@ -23,7 +22,12 @@ from rag_pipeline.agent import Agent, Intent
 from services.llm_client import get_llm_client
 from services.lead_store import LeadStore
 from services.analytics import AnalyticsStore
-from ui.layout import render_footer
+from ui.layout import render_footer           # لو لسه مستخدمه
+from ui.styling import APP_CSS               # المهم جداً
+
+# بعد كل الـ imports دي مباشرة:
+st.markdown(APP_CSS, unsafe_allow_html=True)
+
 
 
 # ---------- Logging ----------
