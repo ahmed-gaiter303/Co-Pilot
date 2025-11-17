@@ -149,7 +149,7 @@ section[data-testid="stSidebar"] {
   margin-bottom: 0.4rem;
 }
 
-/* Tabs for bottom section */
+/* Tabs */
 [data-baseweb="tab-list"] {
   gap: 0.25rem;
 }
