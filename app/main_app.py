@@ -127,7 +127,7 @@ with st.sidebar:
 
 # ---------- Header ----------
 
-from app.main_app import APP_CSS  # if CSS is moved here; otherwise import from ui.styling
+
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 st.markdown(
